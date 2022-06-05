@@ -42,6 +42,13 @@ namespace gazebo
   class GazeboRosImuSensor : public SensorPlugin
   {
   public:
+    enum DropoutSet
+    {
+        DROPOUT_NONE = 0,
+        DROPOUT_ONCE = 1,
+        DROPOUT_REPEAT = 2
+    };
+
     /// \brief Constructor.
     GazeboRosImuSensor();
     /// \brief Destructor.
@@ -84,6 +91,10 @@ namespace gazebo
     ignition::math::Vector3d accelerometer_data;
     /// \brief Angular velocity data from the sensor.
     ignition::math::Vector3d gyroscope_data;
+    /// \brief Handles dropout/delay control
+    bool is_sending{true};  // Default unless in a dropout or delayed start
+    double next_dropout_change_s{0.0};  // Time until next dropout change in seconds from the last change
+    common::Time last_dropout_change{0.0};  // Time of the last dropout change in seconds
 
     //loaded parameters
     /// \brief The data is published on the topic named: /robot_namespace/topic_name.
@@ -98,6 +109,16 @@ namespace gazebo
     double gaussian_noise;
     /// \brief Offset parameter, position part is unused.
     ignition::math::Pose3d offset;
+    /// \brief Optional delay in seconds before sending data (and before the first dropout delay)
+    double delayed_start_min_s{0.0};
+    double delayed_start_max_s{0.0};
+    /// \brief Optional dropout parameters
+    double dropout_length_min_s{0.0};
+    double dropout_length_max_s{0.0};
+    double dropout_delay_min_s{0.0};
+    double dropout_delay_max_s{0.0};
+    /// \brief Sets whether the dropout occurs (0=no, 1=once, 2=repeating)
+    DropoutSet dropout_set{DropoutSet::DROPOUT_NONE};
   };
 }
 

@@ -59,6 +59,7 @@
 #include <ignition/math/Angle.hh>
 #include <ignition/math/Pose3.hh>
 #include <ignition/math/Quaternion.hh>
+#include <ignition/math/Rand.hh>
 #include <ignition/math/Vector3.hh>
 #include <sdf/sdf.hh>
 
@@ -106,6 +107,17 @@ void GazeboRosDiffDrive::Load ( physics::ModelPtr _parent, sdf::ElementPtr _sdf 
     odomOptions["world"] = WORLD;
     gazebo_ros_->getParameter<OdomSource> ( odom_source_, "odometrySource", odomOptions, WORLD );
 
+    // Dropouts and delays for encoders
+    gazebo_ros_->getParameter<double> ( delayed_start_min_s_, "delayedStartMinS", delayed_start_min_s_ );
+    gazebo_ros_->getParameter<double> ( delayed_start_max_s_, "delayedStartMaxS", delayed_start_max_s_ );
+    gazebo_ros_->getParameter<double> ( dropout_length_min_s_, "dropoutLengthMinS", dropout_length_min_s_ );
+    gazebo_ros_->getParameter<double> ( dropout_length_max_s_, "dropoutLengthMaxS", dropout_length_max_s_ );
+    gazebo_ros_->getParameter<double> ( dropout_delay_min_s_, "dropoutDelayMinS", dropout_delay_min_s_ );
+    gazebo_ros_->getParameter<double> ( dropout_delay_max_s_, "dropoutDelayMaxS", dropout_delay_max_s_ );
+    int dropout_set = static_cast<int>(dropout_set_);
+    gazebo_ros_->getParameter<int> ( dropout_set, "dropoutSet", dropout_set );
+    dropout_set_ = static_cast<DropoutSet>(dropout_set);
+    gazebo_ros_->getParameter<double> ( initial_jump_, "initialJump", initial_jump_ );
 
     joints_.resize ( 2 );
     joints_[LEFT] = gazebo_ros_->getJoint ( parent, "leftJoint", "left_joint" );
@@ -178,6 +190,19 @@ void GazeboRosDiffDrive::Load ( physics::ModelPtr _parent, sdf::ElementPtr _sdf 
     this->update_connection_ =
         event::Events::ConnectWorldUpdateBegin ( boost::bind ( &GazeboRosDiffDrive::UpdateChild, this ) );
 
+    // Set up the dropouts
+    last_dropout_change_ = last_update_time_;
+    if(delayed_start_max_s_ > 0.00001)
+    {
+        ROS_DEBUG_STREAM("Encoder cannot read");
+        is_reading_ = false;  // Initialize to not reading
+        next_dropout_change_s_ = (delayed_start_max_s_ - delayed_start_min_s_) *
+            ignition::math::Rand::DblUniform() + delayed_start_min_s_;
+    } else if(dropout_set_ != DropoutSet::DROPOUT_NONE) {
+        // Set the first time to dropout
+        next_dropout_change_s_ = (dropout_delay_max_s_ - dropout_delay_min_s_) *
+            ignition::math::Rand::DblUniform() + dropout_delay_min_s_;
+    }
 }
 
 void GazeboRosDiffDrive::Reset()
@@ -350,21 +375,75 @@ void GazeboRosDiffDrive::QueueThread()
 
 void GazeboRosDiffDrive::UpdateOdometryEncoder()
 {
-    double vl = joints_[LEFT]->GetVelocity ( 0 );
-    double vr = joints_[RIGHT]->GetVelocity ( 0 );
 #if GAZEBO_MAJOR_VERSION >= 8
     common::Time current_time = parent->GetWorld()->SimTime();
 #else
     common::Time current_time = parent->GetWorld()->GetSimTime();
 #endif
+
+    // Handle dropouts and delays
+    bool use_old_data = !is_reading_;
+
+    // Handle dropout update
+    if((dropout_set_ != DropoutSet::DROPOUT_NONE) || (!is_reading_))
+    {
+        // If dropouts are defined or a delay occurred (so no read currently)
+        if((current_time - last_dropout_change_).Double() > next_dropout_change_s_)
+        {
+            if(is_reading_)
+            {
+                // Going to not reading - need to see if we turn off any future dropouts
+                if(dropout_set_ == DropoutSet::DROPOUT_ONCE)
+                {
+                    // By doing the change this way, a delay and a single dropout still functions correctly.
+                    dropout_set_ = DropoutSet::DROPOUT_NONE;
+                }
+                // Already know a dropout should occur in this if statement
+                // Calculate the length of the dropout
+                next_dropout_change_s_ = (dropout_length_max_s_ - dropout_length_min_s_) *
+                    ignition::math::Rand::DblUniform() + dropout_length_min_s_;
+            }
+            else if(dropout_set_ != DropoutSet::DROPOUT_NONE)
+            {
+                // Currently is not reading and will have another dropout
+                next_dropout_change_s_ = (dropout_delay_max_s_ - dropout_delay_min_s_) *
+                    ignition::math::Rand::DblUniform() + dropout_delay_min_s_;
+            }
+            // else: is not reading, but no more dropouts - just go to reading without anything further.
+
+            // Make the change
+            is_reading_ = !is_reading_;
+            ROS_DEBUG_STREAM("Encoder is reading: " << is_reading_);
+            // Reset the last dropout change
+            last_dropout_change_ = current_time;
+        }
+    }
+
+    double vl = joints_[LEFT]->GetVelocity ( 0 );
+    double vr = joints_[RIGHT]->GetVelocity ( 0 );
+    if(use_old_data)
+    {
+        // No encoder update, so use last known data (extrapolate)
+        vl = last_vl_;
+        vr = last_vr_;
+    }
+    else
+    {
+        // Store for next time
+        last_vl_ = vl;
+        last_vr_ = vr;
+    }
     double seconds_since_last_update = ( current_time - last_odom_update_ ).Double();
     last_odom_update_ = current_time;
 
     double b = wheel_separation_;
 
-    // Book: Sigwart 2011 Autonompus Mobile Robots page:337
+    // Book: Sigwart 2011 Autonomous Mobile Robots page:337
     double sl = vl * ( wheel_diameter_ / 2.0 ) * seconds_since_last_update;
     double sr = vr * ( wheel_diameter_ / 2.0 ) * seconds_since_last_update;
+    sl += initial_jump_;
+    sr += initial_jump_;
+    initial_jump_ = 0.0;  // Only use once
     double ssum = sl + sr;
 
     double sdiff = sr - sl;
@@ -397,6 +476,8 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     odom_.twist.twist.angular.z = w;
     odom_.twist.twist.linear.x = v;
     odom_.twist.twist.linear.y = 0;
+
+    ROS_INFO_STREAM("Diff drive: v = " << v << ", w = " << w);
 }
 
 void GazeboRosDiffDrive::publishOdometry ( double step_time )
@@ -410,7 +491,7 @@ void GazeboRosDiffDrive::publishOdometry ( double step_time )
     tf::Vector3 vt;
 
     if ( odom_source_ == ENCODER ) {
-        // getting data form encoder integration
+        // getting data from encoder integration
         qt = tf::Quaternion ( odom_.pose.pose.orientation.x, odom_.pose.pose.orientation.y, odom_.pose.pose.orientation.z, odom_.pose.pose.orientation.w );
         vt = tf::Vector3 ( odom_.pose.pose.position.x, odom_.pose.pose.position.y, odom_.pose.pose.position.z );
 
