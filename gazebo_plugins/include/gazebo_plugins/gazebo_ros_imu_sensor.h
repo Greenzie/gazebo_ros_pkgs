@@ -105,8 +105,12 @@ namespace gazebo
     std::string body_name;
     /// \brief Sensor update rate.
     double update_rate;
-    /// \brief Gaussian noise.
-    double gaussian_noise;
+    /// \brief Gaussian noise for the gyros.
+    double gaussian_noise_gyro;
+    /// \brief Gaussian noise for the accelerometers.
+    double gaussian_noise_accelerometer;
+    /// \brief Gaussian noise for the magnetometer
+    double gaussian_noise_magnetometer;
     /// \brief Offset parameter, position part is unused.
     ignition::math::Pose3d offset;
     /// \brief Optional delay in seconds before sending data (and before the first dropout delay)
