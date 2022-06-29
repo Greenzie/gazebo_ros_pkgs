@@ -192,10 +192,12 @@ void GazeboRosDiffDrive::Load ( physics::ModelPtr _parent, sdf::ElementPtr _sdf 
 
     // Set up the dropouts
     last_dropout_change_ = last_update_time_;
-    if(delayed_start_max_s_ > 0.00001)
+    if((delayed_start_max_s_ > 0.00001) && ( odom_source_ == ENCODER ))
     {
         ROS_DEBUG_STREAM("Encoder cannot read");
         is_reading_ = false;  // Initialize to not reading
+        is_delayed_start_ = true;
+        last_delayed_start_ = is_delayed_start_;
         next_dropout_change_s_ = (delayed_start_max_s_ - delayed_start_min_s_) *
             ignition::math::Rand::DblUniform() + delayed_start_min_s_;
     } else if(dropout_set_ != DropoutSet::DROPOUT_NONE) {
@@ -293,8 +295,9 @@ void GazeboRosDiffDrive::UpdateChild()
 #endif
     double seconds_since_last_update = ( current_time - last_update_time_ ).Double();
 
-    if ( seconds_since_last_update > update_period_ ) {
-        if (this->publish_tf_) publishOdometry ( seconds_since_last_update );
+    if ( (seconds_since_last_update > update_period_) ||
+            (last_delayed_start_ != is_delayed_start_) ) {
+        if (this->publish_tf_ && !is_delayed_start_) publishOdometry ( seconds_since_last_update );
         if ( publishWheelTF_ ) publishWheelTF();
         if ( publishWheelJointState_ ) publishWheelJointState();
 
@@ -331,6 +334,8 @@ void GazeboRosDiffDrive::UpdateChild()
         }
         last_update_time_+= common::Time ( update_period_ );
     }
+
+    last_delayed_start_ = is_delayed_start_;
 #ifdef ENABLE_PROFILER
     IGN_PROFILE_END();
 #endif
@@ -418,6 +423,11 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
             last_dropout_change_ = current_time;
         }
     }
+    // Once starts reading, this becomes false.
+    if(is_reading_)
+    {
+        is_delayed_start_ = false;
+    }
 
     double vl = joints_[LEFT]->GetVelocity ( 0 );
     double vr = joints_[RIGHT]->GetVelocity ( 0 );
@@ -441,9 +451,12 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     // Book: Sigwart 2011 Autonomous Mobile Robots page:337
     double sl = vl * ( wheel_diameter_ / 2.0 ) * seconds_since_last_update;
     double sr = vr * ( wheel_diameter_ / 2.0 ) * seconds_since_last_update;
-    sl += initial_jump_;
-    sr += initial_jump_;
-    initial_jump_ = 0.0;  // Only use once
+    if(is_reading_)  // So it doesn't jump prior to sending out data...
+    {
+        sl += initial_jump_;
+        sr += initial_jump_;
+        initial_jump_ = 0.0;  // Only use once
+    }
     double ssum = sl + sr;
 
     double sdiff = sr - sl;
@@ -476,8 +489,6 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     odom_.twist.twist.angular.z = w;
     odom_.twist.twist.linear.x = v;
     odom_.twist.twist.linear.y = 0;
-
-    ROS_INFO_STREAM("Diff drive: v = " << v << ", w = " << w);
 }
 
 void GazeboRosDiffDrive::publishOdometry ( double step_time )
@@ -554,6 +565,10 @@ void GazeboRosDiffDrive::publishOdometry ( double step_time )
     odom_.child_frame_id = base_footprint_frame;
 
     odometry_publisher_.publish ( odom_ );
+
+    //ROS_INFO_STREAM("Diff drive: v = " <<
+    //                odom_.twist.twist.linear.x <<
+    //                ", w = " << odom_.twist.twist.angular.z);
 }
 
 GZ_REGISTER_MODEL_PLUGIN ( GazeboRosDiffDrive )
