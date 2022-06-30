@@ -171,8 +171,6 @@ namespace gazebo {
       bool last_delayed_start_{false};  // For an immediate send
       double next_dropout_change_s_{0.0};  // Time until next dropout change in seconds from the last change
       common::Time last_dropout_change_{0.0};  // Time of the last dropout change in seconds
-      double last_vl_{0.0};  // In case of encoder dropout
-      double last_vr_{0.0};  // In case of encoder dropout
 
       OdomSource odom_source_;
       geometry_msgs::Pose2D pose_encoder_;

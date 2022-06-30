@@ -387,7 +387,7 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
 #endif
 
     // Handle dropouts and delays
-    bool use_old_data = !is_reading_;
+    bool did_not_read = !is_reading_;
 
     // Handle dropout update
     if((dropout_set_ != DropoutSet::DROPOUT_NONE) || (!is_reading_))
@@ -431,17 +431,12 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
 
     double vl = joints_[LEFT]->GetVelocity ( 0 );
     double vr = joints_[RIGHT]->GetVelocity ( 0 );
-    if(use_old_data)
+    if(did_not_read)
     {
-        // No encoder update, so use last known data (extrapolate)
-        vl = last_vl_;
-        vr = last_vr_;
-    }
-    else
-    {
-        // Store for next time
-        last_vl_ = vl;
-        last_vr_ = vr;
+        // No encoder update. The hardware interface board is still sending messages, but the encoders are not
+        //  updating. Results in a 0 speed signal.
+        vl = 0.0;
+        vr = 0.0;
     }
     double seconds_since_last_update = ( current_time - last_odom_update_ ).Double();
     last_odom_update_ = current_time;
