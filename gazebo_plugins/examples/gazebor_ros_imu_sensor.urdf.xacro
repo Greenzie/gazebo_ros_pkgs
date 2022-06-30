@@ -1,0 +1,37 @@
+<!-- Example IMU configuration for the failure and slow-startup parameters-->
+<!-- Adds a virtual IMU that publishes data -->
+  <gazebo reference="imu_link">
+    <material>Gazebo/Green</material>
+    <gravity>true</gravity>
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>100</update_rate>
+      <visualize>true</visualize>
+      <topic>__default_topic__</topic>
+      <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+        <!-- Minimum time in seconds until the odometry starts being published -->
+        <delayedStartMinS>1.0</delayedStartMinS>
+
+        <!-- Maximum time in seconds until the odometry starts being published.
+          Set to 0 for no delay -->
+        <delayedStartMaxS>2.0</delayedStartMaxS>
+
+        <!-- Minimum time in seconds of each dropout -->
+        <dropoutLengthMinS>0.0</dropoutLengthMinS>
+
+        <!-- Maximum time in seconds of each dropout -->
+        <dropoutLengthMaxS>0.0</dropoutLengthMaxS>
+
+        <!-- Minimum time in seconds between each dropout -->
+        <dropoutDelayMinS>0.0</dropoutDelayMinS>
+
+        <!-- Maximum time in seconds between each dropout -->
+        <dropoutDelayMaxS>0.0</dropoutDelayMaxS>
+
+        <!-- No dropouts (0). Set to 1 for a single dropout (independent of delayed start)
+          or 2 for repeating -->
+        <dropoutSet>0</dropoutSet>
+      </plugin>
+      <pose>0 0 0 0 0 0</pose>
+    </sensor>
+  </gazebo>

@@ -85,6 +85,14 @@ namespace gazebo {
         DROPOUT_REPEAT = 2
     };
 
+    enum DropoutWheel
+    {
+        WHEEL_TOGETHER = 0,
+        WHEEL_SEPARATE = 1,
+        WHEEL_LEFT = 2,
+        WHEEL_RIGHT = 3,
+    };
+
     public:
       GazeboRosDiffDrive();
       ~GazeboRosDiffDrive();
@@ -144,6 +152,8 @@ namespace gazebo {
       double dropout_delay_max_s_{0.0};
       /// \brief Sets whether the dropout occurs (0=no, 1=once, 2=repeating)
       DropoutSet dropout_set_{DropoutSet::DROPOUT_NONE};
+      /// \brief Sets which wheel(s) dropout
+      DropoutWheel dropout_wheel_{DropoutWheel::WHEEL_TOGETHER};
       /// \brief Used to simulate a bad reset, such that the encoder looks like it jumped
       /// Defined as v * ( wheel_diameter_ / 2.0 );
       double initial_jump_{0.0};
@@ -171,6 +181,8 @@ namespace gazebo {
       bool last_delayed_start_{false};  // For an immediate send
       double next_dropout_change_s_{0.0};  // Time until next dropout change in seconds from the last change
       common::Time last_dropout_change_{0.0};  // Time of the last dropout change in seconds
+      bool left_wheel_dropped_{false};  // Whether the left wheel has dropped out
+      bool right_wheel_dropped_{false};  // Whether the right wheel has dropped out
 
       OdomSource odom_source_;
       geometry_msgs::Pose2D pose_encoder_;

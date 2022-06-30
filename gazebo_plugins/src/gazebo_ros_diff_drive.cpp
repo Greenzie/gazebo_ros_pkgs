@@ -117,6 +117,9 @@ void GazeboRosDiffDrive::Load ( physics::ModelPtr _parent, sdf::ElementPtr _sdf 
     int dropout_set = static_cast<int>(dropout_set_);
     gazebo_ros_->getParameter<int> ( dropout_set, "dropoutSet", dropout_set );
     dropout_set_ = static_cast<DropoutSet>(dropout_set);
+    int dropout_wheel = static_cast<int>(dropout_wheel_);
+    gazebo_ros_->getParameter<int> ( dropout_wheel, "dropoutWheel", dropout_wheel );
+    dropout_wheel_ = static_cast<DropoutWheel>(dropout_wheel);
     gazebo_ros_->getParameter<double> ( initial_jump_, "initialJump", initial_jump_ );
 
     joints_.resize ( 2 );
@@ -200,6 +203,7 @@ void GazeboRosDiffDrive::Load ( physics::ModelPtr _parent, sdf::ElementPtr _sdf 
         last_delayed_start_ = is_delayed_start_;
         next_dropout_change_s_ = (delayed_start_max_s_ - delayed_start_min_s_) *
             ignition::math::Rand::DblUniform() + delayed_start_min_s_;
+        // Delayed start is always both wheels - simulating the system startup, not the encoder failure.
     } else if(dropout_set_ != DropoutSet::DROPOUT_NONE) {
         // Set the first time to dropout
         next_dropout_change_s_ = (dropout_delay_max_s_ - dropout_delay_min_s_) *
@@ -419,6 +423,40 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
             // Make the change
             is_reading_ = !is_reading_;
             ROS_DEBUG_STREAM("Encoder is reading: " << is_reading_);
+            // Handle the wheel selection for dropout
+            if(!is_reading_)
+            {
+                // handle which wheel
+                switch(dropout_wheel_)
+                {
+                    case DropoutWheel::WHEEL_TOGETHER:
+                    default:
+                    {
+                        left_wheel_dropped_ = true;
+                        right_wheel_dropped_ = true;
+                        break;
+                    }
+                    case DropoutWheel::WHEEL_SEPARATE:
+                    {
+                        // Random test for each - 50/50 chance
+                        left_wheel_dropped_ = ignition::math::Rand::DblUniform() > 0.5;
+                        right_wheel_dropped_ = ignition::math::Rand::DblUniform() > 0.5;
+                        break;
+                    }
+                    case DropoutWheel::WHEEL_LEFT:
+                    {
+                        left_wheel_dropped_ = true;
+                        right_wheel_dropped_ = false;
+                        break;
+                    }
+                    case DropoutWheel::WHEEL_RIGHT:
+                    {
+                        left_wheel_dropped_ = false;
+                        right_wheel_dropped_ = true;
+                        break;
+                    }
+                }
+            }
             // Reset the last dropout change
             last_dropout_change_ = current_time;
         }
@@ -435,8 +473,14 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     {
         // No encoder update. The hardware interface board is still sending messages, but the encoders are not
         //  updating. Results in a 0 speed signal.
-        vl = 0.0;
-        vr = 0.0;
+        if(left_wheel_dropped_ || is_delayed_start_)
+        {
+            vl = 0.0;
+        }
+        if(right_wheel_dropped_ || is_delayed_start_)
+        {
+            vr = 0.0;
+        }
     }
     double seconds_since_last_update = ( current_time - last_odom_update_ ).Double();
     last_odom_update_ = current_time;
