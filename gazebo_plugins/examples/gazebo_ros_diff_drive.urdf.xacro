@@ -1,0 +1,40 @@
+<!-- Example diff drive configuration for the failure and slow-startup parameters-->
+<!-- Differential drive controller -->
+  <gazebo>
+    <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
+      <!-- Can be "world" or "encoder". If using delayed start or dropouts/failures,
+        must be set to "encoder" -->
+      <odometrySource>encoder</odometrySource>
+
+      <!-- Minimum time in seconds until the odometry starts being published -->
+      <delayedStartMinS>1.0</delayedStartMinS>
+
+      <!-- Maximum time in seconds until the odometry starts being published.
+        Set to 0 for no delay -->
+      <delayedStartMaxS>2.0</delayedStartMaxS>
+
+      <!-- Minimum time in seconds of each dropout -->
+      <dropoutLengthMinS>0.0</dropoutLengthMinS>
+
+      <!-- Maximum time in seconds of each dropout -->
+      <dropoutLengthMaxS>0.0</dropoutLengthMaxS>
+
+      <!-- Minimum time in seconds between each dropout -->
+      <dropoutDelayMinS>0.0</dropoutDelayMinS>
+
+      <!-- Maximum time in seconds between each dropout -->
+      <dropoutDelayMaxS>0.0</dropoutDelayMaxS>
+
+      <!-- No dropouts (0). Set to 1 for a single dropout (independent of delayed start)
+        or 2 for repeating -->
+      <dropoutSet>0</dropoutSet>
+
+      <!-- Select the wheel for dropout (does not affect delayed start).
+        0 means both wheels together, 1 means each wheel has a 50/50 chance of
+        dropping out each time, 2 means left wheel, 3 means right wheel -->
+      <dropoutWheel>0</dropoutWheel>
+
+      <!-- Simulate a badly reset encoder. Defined as v * ( wheel_diameter_ / 2.0 ) -->
+      <initialJump>0.0</initialJump>
+    </plugin>
+  </gazebo>

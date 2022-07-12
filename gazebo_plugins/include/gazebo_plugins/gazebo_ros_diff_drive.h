@@ -77,6 +77,22 @@ namespace gazebo {
         ENCODER = 0,
         WORLD = 1,
     };
+
+    enum DropoutSet
+    {
+        DROPOUT_NONE = 0,
+        DROPOUT_ONCE = 1,
+        DROPOUT_REPEAT = 2
+    };
+
+    enum DropoutWheel
+    {
+        WHEEL_TOGETHER = 0,
+        WHEEL_SEPARATE = 1,
+        WHEEL_LEFT = 2,
+        WHEEL_RIGHT = 3,
+    };
+
     public:
       GazeboRosDiffDrive();
       ~GazeboRosDiffDrive();
@@ -103,7 +119,7 @@ namespace gazebo {
       double wheel_diameter_;
       double wheel_torque;
       double wheel_speed_[2];
-	  double wheel_accel;
+      double wheel_accel;
       double wheel_speed_instr_[2];
 
       std::vector<physics::JointPtr> joints_;
@@ -125,6 +141,23 @@ namespace gazebo {
       std::string odometry_frame_;
       std::string robot_base_frame_;
       bool publish_tf_;
+
+      /// \brief Optional delay in seconds before sending data (and before the first dropout delay)
+      double delayed_start_min_s_{0.0};
+      double delayed_start_max_s_{0.0};
+      /// \brief Optional dropout parameters
+      double dropout_length_min_s_{0.0};
+      double dropout_length_max_s_{0.0};
+      double dropout_delay_min_s_{0.0};
+      double dropout_delay_max_s_{0.0};
+      /// \brief Sets whether the dropout occurs (0=no, 1=once, 2=repeating)
+      DropoutSet dropout_set_{DropoutSet::DROPOUT_NONE};
+      /// \brief Sets which wheel(s) dropout
+      DropoutWheel dropout_wheel_{DropoutWheel::WHEEL_TOGETHER};
+      /// \brief Used to simulate a bad reset, such that the encoder looks like it jumped
+      /// Defined as v * ( wheel_diameter_ / 2.0 );
+      double initial_jump_{0.0};
+
       // Custom Callback Queue
       ros::CallbackQueue queue_;
       boost::thread callback_queue_thread_;
@@ -141,6 +174,15 @@ namespace gazebo {
       double update_rate_;
       double update_period_;
       common::Time last_update_time_;
+
+      /// \brief Handles dropout/delay control
+      bool is_reading_{true};  // Default unless in a dropout or delayed start
+      bool is_delayed_start_{false};  // Prevent sending initially
+      bool last_delayed_start_{false};  // For an immediate send
+      double next_dropout_change_s_{0.0};  // Time until next dropout change in seconds from the last change
+      common::Time last_dropout_change_{0.0};  // Time of the last dropout change in seconds
+      bool left_wheel_dropped_{false};  // Whether the left wheel has dropped out
+      bool right_wheel_dropped_{false};  // Whether the right wheel has dropped out
 
       OdomSource odom_source_;
       geometry_msgs::Pose2D pose_encoder_;

@@ -87,6 +87,20 @@ void gazebo::GazeboRosImuSensor::Load(gazebo::sensors::SensorPtr sensor_, sdf::E
   connection = gazebo::event::Events::ConnectWorldUpdateBegin(boost::bind(&GazeboRosImuSensor::UpdateChild, this, _1));
 
   last_time = sensor->LastUpdateTime();
+  last_dropout_change = last_time;
+
+  // Set up the dropouts
+  if(delayed_start_max_s > 0.00001)
+  {
+    ROS_DEBUG_STREAM("IMU not sending");
+    is_sending = false;  // Initialize to not sending
+    next_dropout_change_s = (delayed_start_max_s - delayed_start_min_s) *
+      ignition::math::Rand::DblUniform() + delayed_start_min_s;
+  } else if(dropout_set != DropoutSet::DROPOUT_NONE) {
+    // Set the first time to dropout
+    next_dropout_change_s = (dropout_delay_max_s - dropout_delay_min_s) *
+      ignition::math::Rand::DblUniform() + dropout_delay_min_s;
+  }
 }
 
 void gazebo::GazeboRosImuSensor::UpdateChild(const gazebo::common::UpdateInfo &/*_info*/)
@@ -109,30 +123,32 @@ void gazebo::GazeboRosImuSensor::UpdateChild(const gazebo::common::UpdateInfo &/
     gyroscope_data = sensor->AngularVelocity();
 
     //Guassian noise is applied to all measurements
-    imu_msg.orientation.x = orientation.X() + GuassianKernel(0,gaussian_noise);
-    imu_msg.orientation.y = orientation.Y() + GuassianKernel(0,gaussian_noise);
-    imu_msg.orientation.z = orientation.Z() + GuassianKernel(0,gaussian_noise);
-    imu_msg.orientation.w = orientation.W() + GuassianKernel(0,gaussian_noise);
+    imu_msg.orientation.x = orientation.X() + GuassianKernel(0,gaussian_noise_magnetometer);
+    imu_msg.orientation.y = orientation.Y() + GuassianKernel(0,gaussian_noise_magnetometer);
+    imu_msg.orientation.z = orientation.Z() + GuassianKernel(0,gaussian_noise_magnetometer);
+    imu_msg.orientation.w = orientation.W() + GuassianKernel(0,gaussian_noise_magnetometer);
 
-    imu_msg.linear_acceleration.x = accelerometer_data.X() + GuassianKernel(0,gaussian_noise);
-    imu_msg.linear_acceleration.y = accelerometer_data.Y() + GuassianKernel(0,gaussian_noise);
-    imu_msg.linear_acceleration.z = accelerometer_data.Z() + GuassianKernel(0,gaussian_noise);
+    imu_msg.linear_acceleration.x = accelerometer_data.X() + GuassianKernel(0,gaussian_noise_accelerometer);
+    imu_msg.linear_acceleration.y = accelerometer_data.Y() + GuassianKernel(0,gaussian_noise_accelerometer);
+    imu_msg.linear_acceleration.z = accelerometer_data.Z() + GuassianKernel(0,gaussian_noise_accelerometer);
 
-    imu_msg.angular_velocity.x = gyroscope_data.X() + GuassianKernel(0,gaussian_noise);
-    imu_msg.angular_velocity.y = gyroscope_data.Y() + GuassianKernel(0,gaussian_noise);
-    imu_msg.angular_velocity.z = gyroscope_data.Z() + GuassianKernel(0,gaussian_noise);
+    imu_msg.angular_velocity.x = gyroscope_data.X() + GuassianKernel(0,gaussian_noise_gyro);
+    imu_msg.angular_velocity.y = gyroscope_data.Y() + GuassianKernel(0,gaussian_noise_gyro);
+    imu_msg.angular_velocity.z = gyroscope_data.Z() + GuassianKernel(0,gaussian_noise_gyro);
 
     //covariance is related to the Gaussian noise
-    double gn2 = gaussian_noise*gaussian_noise;
-    imu_msg.orientation_covariance[0] = gn2;
-    imu_msg.orientation_covariance[4] = gn2;
-    imu_msg.orientation_covariance[8] = gn2;
-    imu_msg.angular_velocity_covariance[0] = gn2;
-    imu_msg.angular_velocity_covariance[4] = gn2;
-    imu_msg.angular_velocity_covariance[8] = gn2;
-    imu_msg.linear_acceleration_covariance[0] = gn2;
-    imu_msg.linear_acceleration_covariance[4] = gn2;
-    imu_msg.linear_acceleration_covariance[8] = gn2;
+    double gn2_magnetometer = gaussian_noise_magnetometer*gaussian_noise_magnetometer;
+    double gn2_accelerometer = gaussian_noise_accelerometer*gaussian_noise_accelerometer;
+    double gn2_gyro = gaussian_noise_gyro*gaussian_noise_gyro;
+    imu_msg.orientation_covariance[0] = gn2_magnetometer;
+    imu_msg.orientation_covariance[4] = gn2_magnetometer;
+    imu_msg.orientation_covariance[8] = gn2_magnetometer;
+    imu_msg.angular_velocity_covariance[0] = gn2_gyro;
+    imu_msg.angular_velocity_covariance[4] = gn2_gyro;
+    imu_msg.angular_velocity_covariance[8] = gn2_gyro;
+    imu_msg.linear_acceleration_covariance[0] = gn2_accelerometer;
+    imu_msg.linear_acceleration_covariance[4] = gn2_accelerometer;
+    imu_msg.linear_acceleration_covariance[8] = gn2_accelerometer;
 
     //preparing message header
     imu_msg.header.frame_id = body_name;
@@ -143,7 +159,47 @@ void gazebo::GazeboRosImuSensor::UpdateChild(const gazebo::common::UpdateInfo &/
     //publishing data
     IGN_PROFILE_BEGIN("publish");
 #endif
-    imu_data_publisher.publish(imu_msg);
+
+    // Handle dropouts
+    if(is_sending)
+    {
+      imu_data_publisher.publish(imu_msg);
+    }
+
+    // Handle dropout update
+    if((dropout_set != DropoutSet::DROPOUT_NONE) || (!is_sending))
+    {
+      // If dropouts are defined or a delay occurred (so no send currently)
+      if((current_time - last_dropout_change).Double() > next_dropout_change_s)
+      {
+        if(is_sending)
+        {
+          // Going to not sending - need to see if we turn off any future dropouts
+          if(dropout_set == DropoutSet::DROPOUT_ONCE)
+          {
+            // By doing the change this way, a delay and a single dropout still functions correctly.
+            dropout_set = DropoutSet::DROPOUT_NONE;
+          }
+          // Already know a dropout should occur in this if statement
+          // Calculate the length of the dropout
+          next_dropout_change_s = (dropout_length_max_s - dropout_length_min_s) *
+            ignition::math::Rand::DblUniform() + dropout_length_min_s;
+        }
+        else if(dropout_set != DropoutSet::DROPOUT_NONE)
+        {
+          // Currently is not sending and will have another dropout
+          next_dropout_change_s = (dropout_delay_max_s - dropout_delay_min_s) *
+            ignition::math::Rand::DblUniform() + dropout_delay_min_s;
+        }
+        // else: is not sending, but no more dropouts - just go to sending without anything further.
+
+        // Make the change
+        is_sending = !is_sending;
+        ROS_DEBUG_STREAM("IMU is currently able to send: " << is_sending);
+        // Reset the last dropout change
+        last_dropout_change = current_time;
+      }
+    }
 #ifdef ENABLE_PROFILER
     IGN_PROFILE_END();
 #endif
@@ -159,7 +215,7 @@ double gazebo::GazeboRosImuSensor::GuassianKernel(double mu, double sigma)
   double U1 = ignition::math::Rand::DblUniform();
   double U2 = ignition::math::Rand::DblUniform();
 
-  // using Box-Muller transform to obtain a varaible with a standard normal distribution
+  // using Box-Muller transform to obtain a variable with a standard normal distribution
   double Z0 = sqrt(-2.0 * ::log(U1)) * cos(2.0*M_PI * U2);
 
   // scaling
@@ -225,13 +281,51 @@ bool gazebo::GazeboRosImuSensor::LoadParameters()
   //NOISE
   if (sdf->HasElement("gaussianNoise"))
   {
-    gaussian_noise =  sdf->Get<double>("gaussianNoise");
-    ROS_INFO_STREAM("<gaussianNoise> set to: " << gaussian_noise);
+    // Backwards compatible - set for all
+    gaussian_noise_gyro =  sdf->Get<double>("gaussianNoise");
+    gaussian_noise_accelerometer = gaussian_noise_gyro;
+    gaussian_noise_magnetometer = gaussian_noise_gyro;
+    ROS_INFO_STREAM("<gaussianNoise> set to: " << gaussian_noise_gyro);
   }
   else
   {
-    gaussian_noise = 0.0;
-    ROS_WARN_STREAM("missing <gaussianNoise>, set to default: " << gaussian_noise);
+    if (sdf->HasElement("gaussianNoiseGyro"))
+    {
+      gaussian_noise_gyro =  sdf->Get<double>("gaussianNoiseGyro");
+      ROS_INFO_STREAM("<gaussianNoiseGyro> set to: " << gaussian_noise_gyro);
+    }
+    else
+    {
+      gaussian_noise_gyro = 0.0;
+      ROS_WARN_STREAM("missing <gaussianNoiseGyro>, set to default: " <<
+        gaussian_noise_gyro);
+    }
+
+    if (sdf->HasElement("gaussianNoiseAccelerometer"))
+    {
+      gaussian_noise_accelerometer =  sdf->Get<double>("gaussianNoiseAccelerometer");
+      ROS_INFO_STREAM("<gaussianNoiseAccelerometer> set to: " <<
+        gaussian_noise_accelerometer);
+    }
+    else
+    {
+      gaussian_noise_accelerometer = 0.0;
+      ROS_WARN_STREAM("missing <gaussianNoiseAccelerometer>, set to default: " <<
+        gaussian_noise_accelerometer);
+    }
+
+    if (sdf->HasElement("gaussianNoiseMagnetometer"))
+    {
+      gaussian_noise_magnetometer =  sdf->Get<double>("gaussianNoiseMagnetometer");
+      ROS_INFO_STREAM("<gaussianNoiseMagnetometer> set to: " <<
+        gaussian_noise_magnetometer);
+    }
+    else
+    {
+      gaussian_noise_magnetometer = 0.0;
+      ROS_WARN_STREAM("missing <gaussianNoiseMagnetometer>, set to default: " <<
+        gaussian_noise_magnetometer);
+    }
   }
 
   //POSITION OFFSET, UNUSED
@@ -256,6 +350,91 @@ bool gazebo::GazeboRosImuSensor::LoadParameters()
   {
     offset.Rot() = ignition::math::Quaterniond::Identity;
     ROS_WARN_STREAM("missing <rpyOffset>, set to default: " << offset.Rot().Roll() << ' ' << offset.Rot().Pitch() << ' ' << offset.Rot().Yaw());
+  }
+
+  // DELAYED_START_MIN_S
+  if (sdf->HasElement("delayedStartMinS"))
+  {
+    delayed_start_min_s =  sdf->Get<double>("delayedStartMinS");
+    ROS_INFO_STREAM("<delayedStartMinS> set to: " << delayed_start_min_s);
+  }
+  else
+  {
+    delayed_start_min_s = 0.0;
+    ROS_WARN_STREAM("missing <delayedStartMinS>, set to default: " << delayed_start_min_s);
+  }
+
+  // DELAYED_START_MAX_S
+  if (sdf->HasElement("delayedStartMaxS"))
+  {
+    delayed_start_max_s =  sdf->Get<double>("delayedStartMaxS");
+    ROS_INFO_STREAM("<delayedStartMaxS> set to: " << delayed_start_max_s);
+  }
+  else
+  {
+    delayed_start_max_s = 0.0;
+    ROS_WARN_STREAM("missing <delayedStartMaxS>, set to default: " << delayed_start_max_s);
+  }
+
+  // Dropout controls
+  // DROPOUT LENGTH MIN S
+  if (sdf->HasElement("dropoutLengthMinS"))
+  {
+    dropout_length_min_s =  sdf->Get<double>("dropoutLengthMinS");
+    ROS_INFO_STREAM("<dropoutLengthMinS> set to: " << dropout_length_min_s);
+  }
+  else
+  {
+    dropout_length_min_s = 0.0;
+    ROS_WARN_STREAM("missing <dropoutLengthMinS>, set to default: " << dropout_length_min_s);
+  }
+
+  // DROPOUT LENGTH MAX S
+  if (sdf->HasElement("dropoutLengthMaxS"))
+  {
+    dropout_length_max_s =  sdf->Get<double>("dropoutLengthMaxS");
+    ROS_INFO_STREAM("<dropoutLengthMaxS> set to: " << dropout_length_max_s);
+  }
+  else
+  {
+    dropout_length_max_s = 0.0;
+    ROS_WARN_STREAM("missing <dropoutLengthMaxS>, set to default: " << dropout_length_max_s);
+  }
+
+  // DROPOUT LENGTH DELAY MIN S
+  if (sdf->HasElement("dropoutDelayMinS"))
+  {
+    dropout_delay_min_s =  sdf->Get<double>("dropoutDelayMinS");
+    ROS_INFO_STREAM("<dropoutDelayMinS> set to: " << dropout_delay_min_s);
+  }
+  else
+  {
+    dropout_delay_min_s = 0.0;
+    ROS_WARN_STREAM("missing <dropoutDelayMinS>, set to default: " << dropout_delay_min_s);
+  }
+
+  // DROPOUT LENGTH DELAY MAX S
+  if (sdf->HasElement("dropoutDelayMaxS"))
+  {
+    dropout_delay_max_s =  sdf->Get<double>("dropoutDelayMaxS");
+    ROS_INFO_STREAM("<dropoutDelayMaxS> set to: " << dropout_delay_max_s);
+  }
+  else
+  {
+    dropout_delay_max_s = 0.0;
+    ROS_WARN_STREAM("missing <dropoutDelayMaxS>, set to default: " << dropout_delay_max_s);
+  }
+
+  // DROPOUT SET
+  if (sdf->HasElement("dropoutSet"))
+  {
+    dropout_set =  static_cast<DropoutSet>(sdf->Get<int>("dropoutSet"));
+    ROS_INFO_STREAM("<dropoutSet> set to: " << dropout_set);
+  }
+  else
+  {
+    dropout_set = DropoutSet::DROPOUT_NONE;
+    ROS_WARN_STREAM("missing <dropoutSet>, set to default: " << static_cast<int>(dropout_set));
   }
 
   return true;
