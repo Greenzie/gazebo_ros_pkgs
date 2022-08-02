@@ -278,6 +278,7 @@ bool gazebo::GazeboRosImuSensor::LoadParameters()
     ROS_WARN_STREAM("missing <updateRateHZ>, set to default: " << update_rate);
   }
 
+  //NOISE
   if (sdf->HasElement("gaussianNoiseGyro"))
   {
     gaussian_noise_gyro =  sdf->Get<double>("gaussianNoiseGyro");
@@ -296,7 +297,6 @@ bool gazebo::GazeboRosImuSensor::LoadParameters()
       gaussian_noise_gyro);
   }
 
-  //NOISE
   if (sdf->HasElement("gaussianNoiseAccelerometer"))
   {
     gaussian_noise_accelerometer =  sdf->Get<double>("gaussianNoiseAccelerometer");
