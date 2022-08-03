@@ -1,3 +1,10 @@
+ros-noetic-gazebo-plugins (2.9.2-0-greenzie-focal2) focal; urgency=medium
+
+  * Updated noise parameter reads to handle backwards compatibility
+    properly
+
+ -- Joel <joel@greenzie.com>  Mon, 01 Aug 2022 23:00:37 -0400
+
 ros-noetic-gazebo-plugins (2.9.2-0-greenzie-focal1) focal; urgency=medium
 
   * Added sensor failures

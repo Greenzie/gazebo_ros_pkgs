@@ -279,53 +279,60 @@ bool gazebo::GazeboRosImuSensor::LoadParameters()
   }
 
   //NOISE
-  if (sdf->HasElement("gaussianNoise"))
+  if (sdf->HasElement("gaussianNoiseGyro"))
   {
-    // Backwards compatible - set for all
+    gaussian_noise_gyro =  sdf->Get<double>("gaussianNoiseGyro");
+    ROS_INFO_STREAM("<gaussianNoiseGyro> set to: " << gaussian_noise_gyro);
+  }
+  else if (sdf->HasElement("gaussianNoise"))
+  {
+    // Backwards compatible - set
     gaussian_noise_gyro =  sdf->Get<double>("gaussianNoise");
-    gaussian_noise_accelerometer = gaussian_noise_gyro;
-    gaussian_noise_magnetometer = gaussian_noise_gyro;
-    ROS_INFO_STREAM("<gaussianNoise> set to: " << gaussian_noise_gyro);
+    ROS_INFO_STREAM("<gaussianNoiseGyro> set to: " << gaussian_noise_gyro);
   }
   else
   {
-    if (sdf->HasElement("gaussianNoiseGyro"))
-    {
-      gaussian_noise_gyro =  sdf->Get<double>("gaussianNoiseGyro");
-      ROS_INFO_STREAM("<gaussianNoiseGyro> set to: " << gaussian_noise_gyro);
-    }
-    else
-    {
-      gaussian_noise_gyro = 0.0;
-      ROS_WARN_STREAM("missing <gaussianNoiseGyro>, set to default: " <<
-        gaussian_noise_gyro);
-    }
+    gaussian_noise_gyro = 0.0;
+    ROS_WARN_STREAM("missing <gaussianNoiseGyro> and <gaussianNoise>, set to default: " <<
+      gaussian_noise_gyro);
+  }
 
-    if (sdf->HasElement("gaussianNoiseAccelerometer"))
-    {
-      gaussian_noise_accelerometer =  sdf->Get<double>("gaussianNoiseAccelerometer");
-      ROS_INFO_STREAM("<gaussianNoiseAccelerometer> set to: " <<
-        gaussian_noise_accelerometer);
-    }
-    else
-    {
-      gaussian_noise_accelerometer = 0.0;
-      ROS_WARN_STREAM("missing <gaussianNoiseAccelerometer>, set to default: " <<
-        gaussian_noise_accelerometer);
-    }
+  if (sdf->HasElement("gaussianNoiseAccelerometer"))
+  {
+    gaussian_noise_accelerometer =  sdf->Get<double>("gaussianNoiseAccelerometer");
+    ROS_INFO_STREAM("<gaussianNoiseAccelerometer> set to: " <<
+      gaussian_noise_accelerometer);
+  }
+  else if (sdf->HasElement("gaussianNoise"))
+  {
+    // Backwards compatible - set
+    gaussian_noise_accelerometer =  sdf->Get<double>("gaussianNoise");
+    ROS_INFO_STREAM("<gaussianNoiseAccelerometer> set to: " << gaussian_noise_accelerometer);
+  }
+  else
+  {
+    gaussian_noise_accelerometer = 0.0;
+    ROS_WARN_STREAM("missing <gaussianNoiseAccelerometer> and <gaussianNoise>, set to default: " <<
+      gaussian_noise_accelerometer);
+  }
 
-    if (sdf->HasElement("gaussianNoiseMagnetometer"))
-    {
-      gaussian_noise_magnetometer =  sdf->Get<double>("gaussianNoiseMagnetometer");
-      ROS_INFO_STREAM("<gaussianNoiseMagnetometer> set to: " <<
-        gaussian_noise_magnetometer);
-    }
-    else
-    {
-      gaussian_noise_magnetometer = 0.0;
-      ROS_WARN_STREAM("missing <gaussianNoiseMagnetometer>, set to default: " <<
-        gaussian_noise_magnetometer);
-    }
+  if (sdf->HasElement("gaussianNoiseMagnetometer"))
+  {
+    gaussian_noise_magnetometer =  sdf->Get<double>("gaussianNoiseMagnetometer");
+    ROS_INFO_STREAM("<gaussianNoiseMagnetometer> set to: " <<
+      gaussian_noise_magnetometer);
+  }
+  else if (sdf->HasElement("gaussianNoise"))
+  {
+    // Backwards compatible - set
+    gaussian_noise_magnetometer =  sdf->Get<double>("gaussianNoise");
+    ROS_INFO_STREAM("<gaussianNoiseMagnetometer> set to: " << gaussian_noise_magnetometer);
+  }
+  else
+  {
+    gaussian_noise_magnetometer = 0.0;
+    ROS_WARN_STREAM("missing <gaussianNoiseMagnetometer> and <gaussianNoise>, set to default: " <<
+      gaussian_noise_magnetometer);
   }
 
   //POSITION OFFSET, UNUSED
