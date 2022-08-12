@@ -117,6 +117,8 @@ void GazeboRosDiffDrive::Load ( physics::ModelPtr _parent, sdf::ElementPtr _sdf 
     int dropout_set = static_cast<int>(dropout_set_);
     gazebo_ros_->getParameter<int> ( dropout_set, "dropoutSet", dropout_set );
     dropout_set_ = static_cast<DropoutSet>(dropout_set);
+    gazebo_ros_->getParameter<double> ( noise_at_dropout_mu_, "noiseAtDropoutMu", noise_at_dropout_mu_ );
+    gazebo_ros_->getParameter<double> ( noise_at_dropout_sigma_, "noiseAtDropoutSigma", noise_at_dropout_sigma_ );
     int dropout_wheel = static_cast<int>(dropout_wheel_);
     gazebo_ros_->getParameter<int> ( dropout_wheel, "dropoutWheel", dropout_wheel );
     dropout_wheel_ = static_cast<DropoutWheel>(dropout_wheel);
@@ -466,7 +468,7 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     {
         is_delayed_start_ = false;
     }
-
+    
     double vl = joints_[LEFT]->GetVelocity ( 0 );
     double vr = joints_[RIGHT]->GetVelocity ( 0 );
     if(did_not_read)
@@ -475,11 +477,11 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
         //  updating. Results in a 0 speed signal.
         if(left_wheel_dropped_ || is_delayed_start_)
         {
-            vl = 0.0;
+            vl = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
         }
         if(right_wheel_dropped_ || is_delayed_start_)
         {
-            vr = 0.0;
+            vr = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
         }
     }
     double seconds_since_last_update = ( current_time - last_odom_update_ ).Double();
@@ -528,6 +530,23 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     odom_.twist.twist.angular.z = w;
     odom_.twist.twist.linear.x = v;
     odom_.twist.twist.linear.y = 0;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+// Utility for adding noise
+double GazeboRosDiffDrive::GaussianKernel(double mu,double sigma)
+{
+  // using Box-Muller transform to generate two independent standard normally disbributed normal variables
+  // see wikipedia
+  double U = (double)rand()/(double)RAND_MAX; // normalized uniform random variable
+  double V = (double)rand()/(double)RAND_MAX; // normalized uniform random variable
+  double X = sqrt(-2.0 * ::log(U)) * cos( 2.0*M_PI * V);
+  //double Y = sqrt(-2.0 * ::log(U)) * sin( 2.0*M_PI * V); // the other indep. normal variable
+  // we'll just use X
+  // scale to our mu and sigma
+  X = sigma * X + mu;
+  return X;
 }
 
 void GazeboRosDiffDrive::publishOdometry ( double step_time )

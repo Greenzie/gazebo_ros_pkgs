@@ -109,7 +109,7 @@ namespace gazebo {
       void publishWheelTF(); /// publishes the wheel tf's
       void publishWheelJointState();
       void UpdateOdometryEncoder();
-
+      double GaussianKernel(double mu,double sigma);
 
       GazeboRosPtr gazebo_ros_;
       physics::ModelPtr parent;
@@ -152,6 +152,10 @@ namespace gazebo {
       double dropout_delay_max_s_{0.0};
       /// \brief Sets whether the dropout occurs (0=no, 1=once, 2=repeating)
       DropoutSet dropout_set_{DropoutSet::DROPOUT_NONE};
+      /// \brief Sets the mean for the gaussian noise magnitude
+      double noise_at_dropout_mu_ = 0.0;
+      /// \brief Sets the std dev for the guassian noise
+      double noise_at_dropout_sigma_ = 0.0;
       /// \brief Sets which wheel(s) dropout
       DropoutWheel dropout_wheel_{DropoutWheel::WHEEL_TOGETHER};
       /// \brief Used to simulate a bad reset, such that the encoder looks like it jumped
