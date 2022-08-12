@@ -433,8 +433,6 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
                 {
                     case DropoutWheel::WHEEL_SEPARATE:
                     {
-                                    ROS_DEBUG_STREAM("WHEEL_SEPARATE");/* FOR TESTING */
-
                         // Random test for each - 50/50 chance
                         left_wheel_dropped_ = ignition::math::Rand::DblUniform() > 0.5;
                         right_wheel_dropped_ = ignition::math::Rand::DblUniform() > 0.5;
@@ -442,16 +440,12 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
                     }
                     case DropoutWheel::WHEEL_LEFT:
                     {
-                                    ROS_DEBUG_STREAM("WHEEL_LEFT");/* FOR TESTING */
-
                         left_wheel_dropped_ = true;
                         right_wheel_dropped_ = false;
                         break;
                     }
                     case DropoutWheel::WHEEL_RIGHT:
                     {
-                                    ROS_DEBUG_STREAM("WHEEL_RIGHT");/* FOR TESTING */
-
                         left_wheel_dropped_ = false;
                         right_wheel_dropped_ = true;
                         break;
@@ -459,8 +453,6 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
                     case DropoutWheel::WHEEL_TOGETHER:
                     default:
                     {
-                                    ROS_DEBUG_STREAM("WHEEL_TOGETHER");/* FOR TESTING */
-
                         left_wheel_dropped_ = true;
                         right_wheel_dropped_ = true;
                         break;
@@ -484,16 +476,14 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
         //  updating. Results in a 0 speed signal.
         if(left_wheel_dropped_ || is_delayed_start_)
         {
-            ROS_DEBUG_STREAM("left_wheel_dropped_");/* FOR TESTING */
-            double simulated_noise = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
+            double simulated_noise = GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
             // sets the joint to that value such that the diff drive controller can then update it after the dropout
             // better simulates the system during dropouts, although the wheel's speed is actually increased in the true dropouts scenario
             joints_[LEFT]->SetParam ( "vel", 0, simulated_noise );
         }
         if(right_wheel_dropped_ || is_delayed_start_)
         {
-            ROS_DEBUG_STREAM("right_wheel_dropped_");/* FOR TESTING */
-            double simulated_noise = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
+            double simulated_noise = GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
             // sets the joint to that value such that the diff drive controller can then update it after the dropout
             // better simulates the system during dropouts, although the wheel's speed is actually increased in the true dropouts scenario
             joints_[RIGHT]->SetParam ( "vel", 0, simulated_noise );
