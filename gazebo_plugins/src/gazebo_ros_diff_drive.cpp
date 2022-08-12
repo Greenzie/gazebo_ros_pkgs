@@ -476,26 +476,32 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     {
         is_delayed_start_ = false;
     }
-    
-    double vl = joints_[LEFT]->GetVelocity ( 0 );
-    double vr = joints_[RIGHT]->GetVelocity ( 0 );
+
+    double vl, vr;
     if(did_not_read)
     {
         // No encoder update. The hardware interface board is still sending messages, but the encoders are not
         //  updating. Results in a 0 speed signal.
         if(left_wheel_dropped_ || is_delayed_start_)
         {
-                                                ROS_DEBUG_STREAM("left_wheel_dropped_");/* FOR TESTING */
-
-            vl = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
+            ROS_DEBUG_STREAM("left_wheel_dropped_");/* FOR TESTING */
+            double simulated_noise = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
+            // sets the joint to that value such that the diff drive controller can then update it after the dropout
+            // better simulates the system during dropouts, although the wheel's speed is actually increased in the true dropouts scenario
+            joints_[LEFT]->SetParam ( "vel", 0, simulated_noise );
         }
         if(right_wheel_dropped_ || is_delayed_start_)
         {
-                                                ROS_DEBUG_STREAM("right_wheel_dropped_");/* FOR TESTING */
-
-            vr = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
+            ROS_DEBUG_STREAM("right_wheel_dropped_");/* FOR TESTING */
+            double simulated_noise = 0.0 + GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
+            // sets the joint to that value such that the diff drive controller can then update it after the dropout
+            // better simulates the system during dropouts, although the wheel's speed is actually increased in the true dropouts scenario
+            joints_[RIGHT]->SetParam ( "vel", 0, simulated_noise );
         }
     }
+    vl = joints_[LEFT]->GetVelocity ( 0 );
+    vr = joints_[RIGHT]->GetVelocity ( 0 );
+
     double seconds_since_last_update = ( current_time - last_odom_update_ ).Double();
     last_odom_update_ = current_time;
 
