@@ -431,6 +431,13 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
                 // handle which wheel
                 switch(dropout_wheel_)
                 {
+                    case DropoutWheel::WHEEL_TOGETHER:
+                    default:
+                    {
+                        left_wheel_dropped_ = true;
+                        right_wheel_dropped_ = true;
+                        break;
+                    }
                     case DropoutWheel::WHEEL_SEPARATE:
                     {
                         // Random test for each - 50/50 chance
@@ -450,13 +457,6 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
                         right_wheel_dropped_ = true;
                         break;
                     }
-                    case DropoutWheel::WHEEL_TOGETHER:
-                    default:
-                    {
-                        left_wheel_dropped_ = true;
-                        right_wheel_dropped_ = true;
-                        break;
-                    }
                 }
             }
             // Reset the last dropout change
@@ -473,8 +473,8 @@ void GazeboRosDiffDrive::UpdateOdometryEncoder()
     double vr = joints_[RIGHT]->GetVelocity ( 0 );
     if(did_not_read)
     {
-        // No encoder update. The hardware interface board is still sending messages, but the encoders are not
-        //  updating. Results in a 0 speed signal.
+        // Encoder updates use the noise values inputted in the URDF interface.
+        // The hardware interface board is still sending the regular message as joint states.
         if(left_wheel_dropped_ || is_delayed_start_)
         {
             vl = GaussianKernel(noise_at_dropout_mu_, noise_at_dropout_sigma_);
