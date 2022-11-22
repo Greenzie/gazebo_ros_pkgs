@@ -120,7 +120,7 @@ void gazebo::GazeboRosImuSensor::UpdateChild(const gazebo::common::UpdateInfo &/
 #endif
     orientation = offset.Rot()*sensor->Orientation(); //applying offsets to the orientation measurement
     accelerometer_data = sensor->LinearAcceleration();
-    gyroscope_data = sensor->AngularVelocity();
+    gyroscope_data = sensor->AngularVelocity() + gyro_offset;
 
     //Guassian noise is applied to all measurements
     imu_msg.orientation.x = orientation.X() + GuassianKernel(0,gaussian_noise_magnetometer);
@@ -357,6 +357,18 @@ bool gazebo::GazeboRosImuSensor::LoadParameters()
   {
     offset.Rot() = ignition::math::Quaterniond::Identity;
     ROS_WARN_STREAM("missing <rpyOffset>, set to default: " << offset.Rot().Roll() << ' ' << offset.Rot().Pitch() << ' ' << offset.Rot().Yaw());
+  }
+
+  //GYRO OFFSET
+  if (sdf->HasElement("gyroOffset"))
+  {
+    gyro_offset =  sdf->Get<ignition::math::Vector3d>("gyroOffset");
+    ROS_INFO_STREAM("<gyroOffset> set to: " << gyro_offset[0] << ' ' << gyro_offset[1] << ' ' << gyro_offset[2]);
+  }
+  else
+  {
+    gyro_offset = ignition::math::Vector3d(0, 0, 0);
+    ROS_WARN_STREAM("missing <gyroOffset>, set to default: " << gyro_offset[0] << ' ' << gyro_offset[1] << ' ' << gyro_offset[2]);
   }
 
   // DELAYED_START_MIN_S

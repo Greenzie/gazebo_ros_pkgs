@@ -113,6 +113,8 @@ namespace gazebo
     double gaussian_noise_magnetometer;
     /// \brief Offset parameter, position part is unused.
     ignition::math::Pose3d offset;
+    /// \brief Optional offset parameter for gyro to simulate miscalibration/bias
+    ignition::math::Vector3d gyro_offset;
     /// \brief Optional delay in seconds before sending data (and before the first dropout delay)
     double delayed_start_min_s{0.0};
     double delayed_start_max_s{0.0};
